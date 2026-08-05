@@ -1,6 +1,6 @@
 import 'dart:math';
 
-enum TetrominoShape { I, O, T, S, Z, J, L }
+enum TetrominoShapeeee { I, O, T, S, Z, J, L }
 
 class Tetromino {
   final TetrominoShape shape;
