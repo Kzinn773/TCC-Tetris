@@ -1,562 +1,318 @@
 import 'dart:math';
-import 'package:shared_preferences/shared_preferences.dart';
-/// ===============================================
-/// TIPOS DE PEÇAS
-/// ===============================================
-
-enum TetrominoShape {
-  I,
-  O,
-  T,
-  S,
-  Z,
-  J,
-  L,
-}
-
-/// ===============================================
-/// CLASSE DA PEÇA
-/// ===============================================
 
 class Tetromino {
-  final TetrominoShape shape;
-
   List<List<int>> matrix;
+  final int type; // 1 a 7
 
-  int x;
-  int y;
+  Tetromino({required this.matrix, required this.type});
 
-  Tetromino(
-    this.shape,
-    this.matrix, {
-    this.x = 0,
-    this.y = 0,
-  });
-
-  factory Tetromino.create(
-    TetrominoShape shape, {
-    int boardCols = 10,
-  }) {
-    late List<List<int>> matrix;
-
-    switch (shape) {
-      case TetrominoShape.I:
-        matrix = [
-          [0, 0, 0, 0],
-          [1, 1, 1, 1],
-          [0, 0, 0, 0],
-          [0, 0, 0, 0],
-        ];
-        break;
-
-      case TetrominoShape.O:
-        matrix = [
-          [2, 2],
-          [2, 2],
-        ];
-        break;
-
-      case TetrominoShape.T:
-        matrix = [
-          [0, 3, 0],
-          [3, 3, 3],
-          [0, 0, 0],
-        ];
-        break;
-
-      case TetrominoShape.S:
-        matrix = [
-          [0, 4, 4],
-          [4, 4, 0],
-          [0, 0, 0],
-        ];
-        break;
-
-      case TetrominoShape.Z:
-        matrix = [
-          [5, 5, 0],
-          [0, 5, 5],
-          [0, 0, 0],
-        ];
-        break;
-
-      case TetrominoShape.J:
-        matrix = [
-          [6, 0, 0],
-          [6, 6, 6],
-          [0, 0, 0],
-        ];
-        break;
-
-      case TetrominoShape.L:
-        matrix = [
-          [0, 0, 7],
-          [7, 7, 7],
-          [0, 0, 0],
-        ];
-        break;
-    }
-
-    return Tetromino(
-      shape,
-      matrix,
-      x: (boardCols - matrix[0].length) ~/ 2,
-      y: 0,
-    );
-  }
-
-  /// Rotação horária
-  void rotateClockwise() {
-    int n = matrix.length;
-
-    List<List<int>> rotated = List.generate(
-      n,
-      (_) => List.filled(n, 0),
-    );
-
-    for (int r = 0; r < n; r++) {
-      for (int c = 0; c < n; c++) {
-        rotated[c][n - 1 - r] = matrix[r][c];
-      }
-    }
-
-    matrix = rotated;
-  }
-
-  /// Rotação anti-horária
-  void rotateCounterClockwise() {
-    int n = matrix.length;
-
-    List<List<int>> rotated = List.generate(
-      n,
-      (_) => List.filled(n, 0),
-    );
-
-    for (int r = 0; r < n; r++) {
-      for (int c = 0; c < n; c++) {
-        rotated[n - 1 - c][r] = matrix[r][c];
-      }
-    }
-
-    matrix = rotated;
-  }
-
-  /// Cópia da peça
+  // Clona a matriz da peça para rotações
   Tetromino clone() {
     return Tetromino(
-      shape,
-      matrix.map((e) => List<int>.from(e)).toList(),
-      x: x,
-      y: y,
+      matrix: matrix.map((row) => List<int>.from(row)).toList(),
+      type: type,
     );
   }
-}
 
-/// ===============================================
-/// SISTEMA 7-BAG
-/// ===============================================
+  // Rotação de Matriz (Horário / Anti-horário)
+  void rotate({bool clockwise = true}) {
+    int rows = matrix.length;
+    int cols = matrix[0].length;
+    List<List<int>> rotated = List.generate(
+      cols,
+      (r) => List.generate(rows, (c) => 0),
+    );
 
-class PieceBag {
-  final Random _random = Random();
-
-  final List<TetrominoShape> _bag = [];
-
-  TetrominoShape next() {
-    if (_bag.isEmpty) {
-      _bag.addAll(TetrominoShape.values);
-      _bag.shuffle(_random);
+    for (int r = 0; r < rows; r++) {
+      for (int c = 0; c < cols; c++) {
+        if (clockwise) {
+          rotated[c][rows - 1 - r] = matrix[r][c];
+        } else {
+          rotated[cols - 1 - c][r] = matrix[r][c];
+        }
+      }
     }
-
-    return _bag.removeAt(0);
+    matrix = rotated;
   }
 }
-/// ===============================================
-/// LÓGICA PRINCIPAL DO JOGO
-/// ===============================================
 
 class TetrisGame {
-  //=========================
-  // TAMANHO DO TABULEIRO
-  //=========================
-
   final int rows = 20;
   final int cols = 10;
 
-  //=========================
-  // TABULEIRO
-  //=========================
-
   late List<List<int>> board;
-
-  //=========================
-  // PEÇAS
-  //=========================
-
   late Tetromino currentPiece;
   late Tetromino nextPiece;
-
   Tetromino? holdPiece;
 
-  //=========================
-  // GERADOR 7-BAG
-  //=========================
-
-  final PieceBag _bag = PieceBag();
-
-  //=========================
-  // CONTROLE DO JOGO
-  //=========================
-
   bool canHold = true;
-
-  bool isGameOver = false;
-
-  //=========================
-  // PONTUAÇÃO
-  //=========================
+  int currentX = 3;
+  int currentY = 0;
 
   int score = 0;
+  bool isGameOver = false;
 
-  /// Maior pontuação salva no computador
-  int highScore = 0;
+  // Sistema 7-Bag para controle de aleatoriedade
+  final List<int> _bag = [];
+  final Random _random = Random();
 
-TetrisGame() {
-  reset();
-  loadHighScore();
-}
+  Function()? onPieceDrop;
+  Function(int lines)? onLineClear;
 
-Future<void> loadHighScore() async {
-  final prefs = await SharedPreferences.getInstance();
-  highScore = prefs.getInt('highScore') ?? 0;
-}
-
-Future<void> saveHighScore() async {
-  if (score > highScore) {
-    highScore = score;
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('highScore', highScore);
+  TetrisGame() {
+    reset();
   }
-}
 
- void reset() {
-  board = List.generate(
-    rows,
-    (_) => List.filled(cols, 0),
-  );
-
-  currentPiece = Tetromino.create(
-    _bag.next(),
-    boardCols: cols,
-  );
-
-  nextPiece = Tetromino.create(
-    _bag.next(),
-    boardCols: cols,
-  );
-
-  holdPiece = null;
-
-  canHold = true;
-
-  isGameOver = false;
-
-  score = 0;
-
-  // Não resetar o High Score.
-  // Ele permanece salvo entre as partidas.
-}
-
-  //==========================================
-  // LOOP DO JOGO
-  //==========================================
-
-  void tick() {
-    if (isGameOver) return;
-
-    if (!movePiece(0, 1)) {
-      lockPiece();
-      clearLines();
-      spawnNextPiece();
+  // Definição das matrizes padrão dos 7 Tetrominós
+  static Tetromino _createTetromino(int type) {
+    switch (type) {
+      case 1: // I
+        return Tetromino(
+          type: 1,
+          matrix: [
+            [1, 1, 1, 1]
+          ],
+        );
+      case 2: // O
+        return Tetromino(
+          type: 2,
+          matrix: [
+            [2, 2],
+            [2, 2]
+          ],
+        );
+      case 3: // T
+        return Tetromino(
+          type: 3,
+          matrix: [
+            [0, 3, 0],
+            [3, 3, 3]
+          ],
+        );
+      case 4: // S
+        return Tetromino(
+          type: 4,
+          matrix: [
+            [0, 4, 4],
+            [4, 4, 0]
+          ],
+        );
+      case 5: // Z
+        return Tetromino(
+          type: 5,
+          matrix: [
+            [5, 5, 0],
+            [0, 5, 5]
+          ],
+        );
+      case 6: // J
+        return Tetromino(
+          type: 6,
+          matrix: [
+            [6, 0, 0],
+            [6, 6, 6]
+          ],
+        );
+      case 7: // L
+        return Tetromino(
+          type: 7,
+          matrix: [
+            [0, 0, 7],
+            [7, 7, 7]
+          ],
+        );
+      default:
+        return Tetromino(type: 1, matrix: [[1]]);
     }
   }
 
-  //==========================================
-  // MOVIMENTO
-  //==========================================
-
-  bool movePiece(int dx, int dy) {
-    if (_checkCollision(
-      currentPiece.matrix,
-      currentPiece.x + dx,
-      currentPiece.y + dy,
-    )) {
-      return false;
+  // Gera uma nova peça garantindo distribuição justa pelo 7-Bag
+  Tetromino _generateNextPieceFromBag() {
+    if (_bag.isEmpty) {
+      _bag.addAll([1, 2, 3, 4, 5, 6, 7]);
+      _bag.shuffle(_random);
     }
-
-    currentPiece.x += dx;
-    currentPiece.y += dy;
-
-    return true;
+    int nextType = _bag.removeAt(0);
+    return _createTetromino(nextType);
   }
 
-  //==========================================
-  // ROTAÇÃO
-  //==========================================
-
-  bool rotatePiece({bool clockwise = true}) {
-    List<List<int>> original =
-        currentPiece.matrix
-            .map((e) => List<int>.from(e))
-            .toList();
-
-    if (clockwise) {
-      currentPiece.rotateClockwise();
-    } else {
-      currentPiece.rotateCounterClockwise();
-    }
-
-    if (_checkCollision(
-      currentPiece.matrix,
-      currentPiece.x,
-      currentPiece.y,
-    )) {
-      currentPiece.matrix = original;
-      return false;
-    }
-
-    return true;
-  }
-
-  //==========================================
-  // COLISÃO
-  //==========================================
-
-  bool _checkCollision(
-    List<List<int>> matrix,
-    int px,
-    int py,
-  ) {
-    for (int r = 0; r < matrix.length; r++) {
-      for (int c = 0; c < matrix[r].length; c++) {
-        if (matrix[r][c] == 0) continue;
-
-        int boardX = px + c;
-        int boardY = py + r;
-
-        if (boardX < 0 || boardX >= cols) {
-          return true;
-        }
-
-        if (boardY >= rows) {
-          return true;
-        }
-
-        if (boardY >= 0 &&
-            board[boardY][boardX] != 0) {
-          return true;
-        }
-      }
-    }
-
-    return false;
-  }
-
-  //==========================================
-  // FIXAR PEÇA
-  //==========================================
-
-  void lockPiece() {
-    for (int r = 0; r < currentPiece.matrix.length; r++) {
-      for (int c = 0; c < currentPiece.matrix[r].length; c++) {
-        if (currentPiece.matrix[r][c] == 0) continue;
-
-        int boardX = currentPiece.x + c;
-        int boardY = currentPiece.y + r;
-
-        if (boardY >= 0 &&
-            boardY < rows &&
-            boardX >= 0 &&
-            boardX < cols) {
-          board[boardY][boardX] =
-              currentPiece.matrix[r][c];
-        }
-      }
-    }
-  }
-
-  //==========================================
-  // PRÓXIMA PEÇA
-  //==========================================
-
-  void spawnNextPiece() {
-    currentPiece = nextPiece;
-
-    currentPiece.x =
-        (cols - currentPiece.matrix[0].length) ~/ 2;
-
-    currentPiece.y = 0;
-
-    nextPiece = Tetromino.create(
-      _bag.next(),
-      boardCols: cols,
-    );
-
+  void reset() {
+    board = List.generate(rows, (_) => List.generate(cols, (_) => 0));
+    _bag.clear();
+    isGameOver = false;
+    score = 0;
+    holdPiece = null;
     canHold = true;
 
-    if (_checkCollision(
-      currentPiece.matrix,
-      currentPiece.x,
-      currentPiece.y,
-    )) {
+    currentPiece = _generateNextPieceFromBag();
+    nextPiece = _generateNextPieceFromBag();
+    _spawnPiece();
+  }
+
+  void _spawnPiece() {
+    currentX = (cols - currentPiece.matrix[0].length) ~/ 2;
+    currentY = 0;
+
+    if (_checkCollision(currentPiece, currentX, currentY)) {
       isGameOver = true;
     }
   }
 
-  //==========================================
-  // HOLD
-  //==========================================
+  bool _checkCollision(Tetromino piece, int x, int y) {
+    for (int r = 0; r < piece.matrix.length; r++) {
+      for (int c = 0; c < piece.matrix[r].length; c++) {
+        if (piece.matrix[r][c] != 0) {
+          int newX = x + c;
+          int newY = y + r;
 
-  void holdCurrentPiece() {
-    if (!canHold) return;
+          if (newX < 0 || newX >= cols || newY >= rows) {
+            return true;
+          }
 
-    if (holdPiece == null) {
-      holdPiece = Tetromino.create(
-        currentPiece.shape,
-        boardCols: cols,
-      );
-
-      spawnNextPiece();
-    } else {
-      Tetromino temp = holdPiece!;
-
-      holdPiece = Tetromino.create(
-        currentPiece.shape,
-        boardCols: cols,
-      );
-
-      currentPiece = Tetromino.create(
-        temp.shape,
-        boardCols: cols,
-      );
-    }
-
-    canHold = false;
-  }
-
-  //==========================================
-  // HARD DROP
-  //==========================================
-
-  void hardDrop() {
-    while (movePiece(0, 1)) {}
-
-    lockPiece();
-
-    clearLines();
-
-    spawnNextPiece();
-  }
-    //==========================================
-  // LIMPAR LINHAS
-  //==========================================
-
-  void clearLines() {
-    int cleared = 0;
-
-    for (int r = rows - 1; r >= 0; r--) {
-      if (!board[r].contains(0)) {
-        board.removeAt(r);
-        board.insert(0, List.filled(cols, 0));
-
-        cleared++;
-        r++;
+          if (newY >= 0 && board[newY][newX] != 0) {
+            return true;
+          }
+        }
       }
     }
-
-    score += _calculateScore(cleared);
+    return false;
   }
 
-  int _calculateScore(int lines) {
-    switch (lines) {
-      case 1:
-        return 100;
-      case 2:
-        return 300;
-      case 3:
-        return 500;
-      case 4:
-        return 800;
-      default:
-        return 0;
+  void tick() {
+    if (isGameOver) return;
+
+    if (!_checkCollision(currentPiece, currentX, currentY + 1)) {
+      currentY++;
+    } else {
+      _lockPiece();
     }
   }
 
-  //==========================================
-  // GHOST PIECE
-  //==========================================
-
-  int ghostY() {
-    int y = currentPiece.y;
-
-    while (!_checkCollision(
-      currentPiece.matrix,
-      currentPiece.x,
-      y + 1,
-    )) {
-      y++;
+  void movePiece(int dx, int dy) {
+    if (isGameOver) return;
+    if (!_checkCollision(currentPiece, currentX + dx, currentY + dy)) {
+      currentX += dx;
+      currentY += dy;
     }
-
-    return y;
   }
 
-  //==========================================
-  // TABULEIRO PARA DESENHO
-  //==========================================
+  void rotatePiece({bool clockwise = true}) {
+    if (isGameOver) return;
 
-  List<List<int>> getDisplayBoard() {
-    List<List<int>> display =
-        List.generate(
-      rows,
-      (r) => List<int>.from(board[r]),
-    );
+    Tetromino rotated = currentPiece.clone();
+    rotated.rotate(clockwise: clockwise);
 
-    //------------- Ghost Piece -------------
+    // Ajustes básicos de parede (Wall Kick Simples)
+    List<int> offsets = [0, -1, 1, -2, 2];
+    for (int offset in offsets) {
+      if (!_checkCollision(rotated, currentX + offset, currentY)) {
+        currentX += offset;
+        currentPiece = rotated;
+        return;
+      }
+    }
+  }
 
-    int ghost = ghostY();
+  void hardDrop() {
+    if (isGameOver) return;
+    while (!_checkCollision(currentPiece, currentX, currentY + 1)) {
+      currentY++;
+    }
+    _lockPiece();
+  }
 
+  void holdCurrentPiece() {
+    if (isGameOver || !canHold) return;
+
+    canHold = false;
+    if (holdPiece == null) {
+      holdPiece = _createTetromino(currentPiece.type);
+      currentPiece = nextPiece;
+      nextPiece = _generateNextPieceFromBag();
+    } else {
+      Tetromino temp = _createTetromino(currentPiece.type);
+      currentPiece = _createTetromino(holdPiece!.type);
+      holdPiece = temp;
+    }
+    _spawnPiece();
+  }
+
+  void _lockPiece() {
     for (int r = 0; r < currentPiece.matrix.length; r++) {
       for (int c = 0; c < currentPiece.matrix[r].length; c++) {
-        if (currentPiece.matrix[r][c] == 0) continue;
-
-        int by = ghost + r;
-        int bx = currentPiece.x + c;
-
-        if (by >= 0 &&
-            by < rows &&
-            bx >= 0 &&
-            bx < cols &&
-            display[by][bx] == 0) {
-          display[by][bx] = -1;
+        if (currentPiece.matrix[r][c] != 0) {
+          int boardY = currentY + r;
+          int boardX = currentX + c;
+          if (boardY >= 0 && boardY < rows && boardX >= 0 && boardX < cols) {
+            board[boardY][boardX] = currentPiece.matrix[r][c];
+          }
         }
       }
     }
 
-    //------------- Peça Atual -------------
+    onPieceDrop?.call();
+    _clearLines();
+
+    currentPiece = nextPiece;
+    nextPiece = _generateNextPieceFromBag();
+    canHold = true;
+    _spawnPiece();
+  }
+
+  void _clearLines() {
+    int linesCleared = 0;
+
+    for (int r = rows - 1; r >= 0; r--) {
+      if (board[r].every((cell) => cell != 0)) {
+        board.removeAt(r);
+        board.insert(0, List.generate(cols, (_) => 0));
+        linesCleared++;
+        r++; 
+      }
+    }
+
+    if (linesCleared > 0) {
+      onLineClear?.call(linesCleared);
+    }
+  }
+
+  // Gera o tabuleiro mesclado com a peça atual e a sombra (Ghost Piece)
+  List<List<int>> getDisplayBoard() {
+    List<List<int>> display = List.generate(
+      rows,
+      (r) => List.from(board[r]),
+    );
+
+    if (isGameOver) return display;
+
+    // Projetar Sombra (Ghost Piece)
+    int ghostY = currentY;
+    while (!_checkCollision(currentPiece, currentX, ghostY + 1)) {
+      ghostY++;
+    }
 
     for (int r = 0; r < currentPiece.matrix.length; r++) {
       for (int c = 0; c < currentPiece.matrix[r].length; c++) {
-        if (currentPiece.matrix[r][c] == 0) continue;
+        if (currentPiece.matrix[r][c] != 0) {
+          // Desenha sombra
+          int gY = ghostY + r;
+          int gX = currentX + c;
+          if (gY >= 0 && gY < rows && gX >= 0 && gX < cols && display[gY][gX] == 0) {
+            display[gY][gX] = -1;
+          }
+        }
+      }
+    }
 
-        int by = currentPiece.y + r;
-        int bx = currentPiece.x + c;
-
-        if (by >= 0 &&
-            by < rows &&
-            bx >= 0 &&
-            bx < cols) {
-          display[by][bx] =
-              currentPiece.matrix[r][c];
+    // Desenha Peça Atual
+    for (int r = 0; r < currentPiece.matrix.length; r++) {
+      for (int c = 0; c < currentPiece.matrix[r].length; c++) {
+        if (currentPiece.matrix[r][c] != 0) {
+          int pY = currentY + r;
+          int pX = currentX + c;
+          if (pY >= 0 && pY < rows && pX >= 0 && pX < cols) {
+            display[pY][pX] = currentPiece.matrix[r][c];
+          }
         }
       }
     }
